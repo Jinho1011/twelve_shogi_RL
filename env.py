@@ -1,6 +1,50 @@
 # -*- coding:utf-8 -*-
 import numpy as np
 
+PIECES = {
+    '장': 1,
+    '상': 2,
+    '왕': 3,
+    '자': 4,
+    '후': 5,
+}
+
+"""
+게임이 시작되면 선 플레이어부터 말 1개를 1칸 이동시킬 수 있다. 
+말을 이동시켜 상대방의 말을 잡은 경우, 해당 말을 포로로 잡게 되며 포로로 잡은 말은 다음 턴부터 자신의 말로 사용할 수 있다.
+
+게임 판에 포로로 잡은 말을 내려놓는 행동도 턴을 소모하는 것이며 이미 말이 놓여진 곳이나 상대의 진영에는 말을 내려놓을 수 없다.
+
+상대방의 후(侯)를 잡아 자신의 말로 사용할 경우에는 자(子)로 뒤집어서 사용해야 한다.
+
+게임은 한 플레이어가 상대방의 왕(王)을 잡으면 해당 플레이어의 승리로 종료된다.
+
+만약 자신의 왕(王)이 상대방의 진영에 들어가 자신의 턴이 다시 돌아올 때까지 한 턴을 버틸 경우 해당 플레이어의 승리로 게임이 종료된다.
+
+1: 장(將). 자신의 진영 오른쪽에 놓이는 말로 앞, 뒤와 좌, 우로 이동이 가능하다.
+2: 상(相). 자신의 진영 왼쪽에 놓이며 대각선 4방향으로 이동할 수 있다.
+3: 왕(王). 자신의 진영 중앙에 위치하며 앞, 뒤, 좌, 우, 대각선 방향까지 모든 방향으로 이동이 가능하다.
+4: 자(子). 왕의 앞에 놓이며 오로지 앞으로만 이동할 수 있다.
+5: 하지만, 자(子)는 상대 진영에 들어가면 뒤집어서 후(侯)로 사용된다. 후(侯)는 대각선 뒤쪽 방향을 제외한 전 방향으로 이동할 수 있다.
+
+초기 상태는 아래와 같음
+
+2 0 0 0
+3 4 0 0
+1 0 0 0
+
+0 0 0 1
+0 0 4 3
+0 0 0 2
+
+step 함수 의사코드
+1. 먼저 piece를 랜덤하게 선택한다
+2. 선택한 piece에서 취할 수 있는 액션 목록 중에서 랜덤하게 하나를 선택한다
+ - 만약 취할 수 있는 액션이 없다면, 다시 1번으로 돌아가 랜덤하게 piece를 선택하고 2를 반복한다
+3. 만약 어떠한 액션이라도 수행하고 나면, finish_check로 종료 여부를 확인한다
+
+"""
+
 
 class TwelveShogi():
     def __init__(self, row_size, col_size) -> None:
@@ -18,6 +62,7 @@ class TwelveShogi():
         obs = self.state[0]
         return obs
 
+    # TODO: finish_check 함수 수정
     def finish_check(self) -> bool:
         for i in range(0, self.row_size):
             for j in range(0, self.col_size):
@@ -154,6 +199,7 @@ class TwelveShogi():
     def get_state(self, turn: int):
         return self.state[turn]
 
+    # TODO: put_check 함수 수정
     def put_check(self, action: int, turn: int):
         idx = (action // self.col_size, action % self.row_size)
 
@@ -162,6 +208,7 @@ class TwelveShogi():
 
         return True
 
+    # TODO: step 함수 수정
     def step(self, action: int, turn: int):
         idx = (action // self.col_size, action % self.row_size)
 
