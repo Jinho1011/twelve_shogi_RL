@@ -20,7 +20,7 @@ class ShogiRenderer:
         self.screen = pg.display.set_mode(
             (col_size * grid_size, row_size * grid_size))
         pg.display.set_caption('Connect6 Game')
-        self.font = pg.font.Font(None, font_size)
+        self.font = pg.font.SysFont('AppleSDGothicNeo', font_size)
 
     def render(self):
         self.screen.fill(board_color)
