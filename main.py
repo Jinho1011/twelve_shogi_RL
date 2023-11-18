@@ -1,5 +1,6 @@
 # -*- coding:utf-8 -*-
 
+from agent import Agent
 from env import TwelveShogi
 from game import ShogiRenderer
 import pygame as pg
@@ -14,11 +15,12 @@ def main():
     env = TwelveShogi(row_size, col_size)
     renderer = ShogiRenderer(env, row_size, col_size)
 
-    obs = env.reset()
+    env.reset()
     done = False
-    target = 0
+    turn = 0
+    agent1 = Agent(env, 0)
+    agent2 = Agent(env, 1)
 
-    step = 0
     cum_reward = 0.0
 
     while not done:
@@ -26,16 +28,20 @@ def main():
             if event.type == pg.QUIT:
                 done = True
 
-        action = random.randint(0, row_size * col_size - 1)
-        next_obs, reward, done, info = env.step(action, target)
+        if turn == 0:
+            action = agent1.select_action()
+        else:
+            action = agent2.select_action()
+
+        next_state, reward, done = env.step(action, turn)
 
         cum_reward += reward
-        print(f"Step: {step}, Reward: {cum_reward}")
+        print(f"Step: {next_state}, Reward: {cum_reward}")
 
         renderer.render()
-        target ^= 1
+        turn ^= 1
 
-        time.sleep(1)
+        time.sleep(0.1)
 
     # renderer.close()
 
