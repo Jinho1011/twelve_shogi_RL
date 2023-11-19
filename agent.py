@@ -7,9 +7,6 @@ class Agent():
         self.env = env
         self.turn = turn
 
-        self.pieces = []
-        # [ (i, j, type), ... ]
-
     def get_empty_location(self):
         locations = []
         for i in range(0, self.env.row_size):
@@ -50,14 +47,16 @@ class Agent():
         return result
 
     def get_pieces(self, turn):
+        pieces = []
         for i in range(0, self.env.row_size):
             for j in range(0, self.env.col_size):
                 if turn == 0:
                     if self.env.state[i][j] > 0:
-                        self.pieces.append((i, j, self.env.state[i][j]))
+                        pieces.append((i, j, self.env.state[i][j]))
                 else:
                     if self.env.state[i][j] < 0:
-                        self.pieces.append((i, j, self.env.state[i][j]))
+                        pieces.append((i, j, self.env.state[i][j]))
+        return pieces
 
     def select_action(self):
         """
@@ -79,10 +78,11 @@ class Agent():
         done = False
 
         while not done:
+            pieces = self.get_pieces(self.turn)
+
             if len(self.env.poros[self.turn]) == 0:
                 # self.pieces 중에서 랜덤하게 선택 -> 가능한 액션 받아오고
-                self.get_pieces(self.turn)
-                piece = random.choice(self.pieces)
+                piece = random.choice(pieces)
                 i, j, type = piece
 
                 actions = self.get_actions(piece)
@@ -93,9 +93,8 @@ class Agent():
                 # 반환형식: action = ((1, 2), 2, (1,1)))
                 return ((i, j), type, action)
             else:
-                if len(self.pieces) / (len(self.pieces) + len(self.env.poros)) <= random.random():
-                    self.get_pieces(self.turn)
-                    piece = random.choice(self.pieces)
+                if len(pieces) / (len(pieces) + len(self.env.poros)) <= random.random():
+                    piece = random.choice(pieces)
                     i, j, type = piece
 
                     actions = self.get_actions(piece)
