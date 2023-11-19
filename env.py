@@ -128,14 +128,19 @@ class TwelveShogi():
             return False
 
         else:
-            count = 0
-
-            for row in self.state:
-                for item in row:
-                    if item == 3:
-                        count += 1
-
-            conditon1 = count >= 2
+            if turn == 0:
+                for row in self.state:
+                    for item in row:
+                        if item == -3:
+                            return False
+                return True
+            
+            else:
+                for row in self.state:
+                    for item in row:
+                        if item == 3:
+                            return False
+                return True
 
     def get_type(self, i, j):
         return abs(self.state[i, j])
