@@ -23,10 +23,19 @@ def main():
 
     cum_reward = 0.0
 
+    renderer.render()
+
     while not done:
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                done = True
+        # 스페이스 바를 누를 때까지 기다림
+        wait_for_space = True
+        while wait_for_space:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    done = True
+                    wait_for_space = False
+                elif event.type == pg.KEYDOWN:
+                    if event.key == pg.K_SPACE:
+                        wait_for_space = False
 
         if turn == 0:
             action = agent1.select_action()
@@ -35,10 +44,11 @@ def main():
 
         next_state, reward, done = env.step(action, turn)
 
+        renderer.render()
+
         cum_reward += reward
         print(f"Step: {next_state}, Reward: {cum_reward}")
 
-        renderer.render()
         turn ^= 1
 
         time.sleep(0.1)
