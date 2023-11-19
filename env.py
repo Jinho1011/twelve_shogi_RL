@@ -151,10 +151,10 @@ class TwelveShogi():
 
     def turn_hu(self,type, i, j):
         if type == 4:
-            if self.area_check(0, i, j):
+            if self.area_check(1, i, j):
                 self.state[i][j] = 5
         elif type == -4:
-            if self.area_check(1, i, j):
+            if self.area_check(0, i, j):
                 self.state[i][j] = -5
 
 
@@ -183,7 +183,7 @@ class TwelveShogi():
                 # 빈 칸으로 이동
                 self.move_piece(i, j, x, y)
                 reward += self.reward_dict["step"]
-            self.turn_hu(type, i, j)
+            self.turn_hu(type, target_x, target_y)
         else:
             # 포로에서 말을 꺼내서 두는 경우
             if self.state[i][j] == 0:
