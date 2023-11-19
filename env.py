@@ -114,33 +114,32 @@ class TwelveShogi():
                 return 후_action[turn]
 
     # TODO: finish_check 함수 수정
-    def finish_check(self, stage, turn) -> bool:
-        if stage == 0:
-            king = 3 if turn == 0 else -3
-            if turn == 0:
-                for i in range(0, self.row_size):
-                    if self.state[i][3] == king:
-                        return True
-            else:
-                for i in range(0, self.row_size):
-                    if self.state[i][0] == king:
-                        return True
-            return False
-
+    def finish_region_check(self, turn) -> bool:
+        king = 3 if turn == 0 else -3
+        if turn == 0:
+            for i in range(0, self.row_size):
+                if self.state[i][3] == king:
+                    return True
         else:
-            if turn == 0:
-                for row in self.state:
-                    for item in row:
-                        if item == -3:
-                            return False
-                return True
+            for i in range(0, self.row_size):
+                if self.state[i][0] == king:
+                    return True    
+        return False
+
+    def finish_catch_check(self, turn) -> bool:
+        if turn == 0:
+            for row in self.state:
+                for item in row:
+                    if item == -3:
+                        return False
+            return True
             
-            else:
-                for row in self.state:
-                    for item in row:
-                        if item == 3:
-                            return False
-                return True
+        else:
+            for row in self.state:
+                for item in row:
+                    if item == 3:
+                        return False
+            return True
 
     def get_type(self, i, j):
         return abs(self.state[i, j])
@@ -162,7 +161,7 @@ class TwelveShogi():
     def step(self, action: ((int, int), int, (int, int)), turn: int):
         coord, type, direction = action
         i, j = coord
-        done = self.finish_check(0, turn)
+        done_region = self.finish_region_check(turn)
         reward = 0
 
         if direction:
@@ -192,9 +191,9 @@ class TwelveShogi():
                 self.poros[turn].remove(type)
                 reward += self.reward_dict["step"]
 
-        done = self.finish_check(1, turn)
-        if done:
-            reward += self.reward_dict["victory"] if done == 1 else self.reward_dict["defeat"]
+        done_catch = self.finish_catch_check(turn)
+        if done_region or done_catch:
+            reward += self.reward_dict["victory"]
 
         next_state = self.state
-        return next_state, reward, done
+        return next_state, reward, done_region or done_catch
