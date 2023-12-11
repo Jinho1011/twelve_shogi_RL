@@ -1,6 +1,4 @@
 # -*- coding:utf-8 -*-
-
-from agent import Agent
 from env import TwelveShogi
 from game import ShogiRenderer
 import pygame as pg
@@ -18,8 +16,6 @@ def main():
     env.reset()
     done = False
     turn = 0
-    agent1 = Agent(env, 0)
-    agent2 = Agent(env, 1)
 
     cum_reward = 0.0
 
@@ -37,10 +33,8 @@ def main():
                     if event.key == pg.K_SPACE:
                         wait_for_space = False
 
-        if turn == 0:
-            action = agent1.select_action()
-        else:
-            action = agent2.select_action()
+        actions = env.get_all_possible_actions(turn)
+        action = random.choice(actions)
 
         next_state, reward, done = env.step(action, turn)
 

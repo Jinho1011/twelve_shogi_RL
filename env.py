@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import random
 import numpy as np
 
 PIECES = {
@@ -70,7 +71,8 @@ class TwelveShogi():
         ]
         self.reward_dict = {"victory": 10.0, "defeat": -
                             10.0, "step": 0.0001, "catch": 0.01}
-        self.screen = None
+        self.move_history = []
+        self.moves = 0
 
     def reset(self):
         self.state = [
@@ -79,7 +81,6 @@ class TwelveShogi():
             [1, 0, 0, -2]
         ]
 
-    # 내 영역인지 아닌지 확인하는 함수, 내 영역이면 True
     def area_check(self, turn, i, j) -> bool:
         if turn == 0:
             return j == 0
@@ -112,8 +113,10 @@ class TwelveShogi():
                 return 자_action[turn]
             case 5:
                 return 후_action[turn]
+            case _:
+                return []
+        return []
 
-    # TODO: finish_check 함수 수정
     def finish_region_check(self, turn) -> bool:
         king = 3 if turn == 0 else -3
         if turn == 0:
@@ -123,7 +126,7 @@ class TwelveShogi():
         else:
             for i in range(0, self.row_size):
                 if self.state[i][0] == king:
-                    return True    
+                    return True
         return False
 
     def finish_catch_check(self, turn) -> bool:
@@ -133,7 +136,7 @@ class TwelveShogi():
                     if item == -3:
                         return False
             return True
-            
+
         else:
             for row in self.state:
                 for item in row:
@@ -142,14 +145,14 @@ class TwelveShogi():
             return True
 
     def get_type(self, i, j):
-        return abs(self.state[i, j])
+        return abs(self.state[i][j])
 
     def move_piece(self, i, j, x, y):
         temp = self.state[i][j]
         self.state[i+x][j+y] = temp
         self.state[i][j] = 0
 
-    def turn_hu(self,type, i, j):
+    def turn_hu(self, type, i, j):
         if type == 4:
             if self.area_check(1, i, j):
                 self.state[i][j] = 5
@@ -157,8 +160,7 @@ class TwelveShogi():
             if self.area_check(0, i, j):
                 self.state[i][j] = -5
 
-
-    def step(self, action: ((int, int), int, (int, int)), turn: int):
+    def step(self, action, turn: int):
         coord, type, direction = action
         i, j = coord
         done_region = self.finish_region_check(turn)
@@ -197,3 +199,51 @@ class TwelveShogi():
 
         next_state = self.state
         return next_state, reward, done_region or done_catch
+
+    def get_obvious_moves(self, turn):
+        actions = self.get_all_possible_actions(turn)
+        return actions
+
+    def get_all_possible_actions(self, turn: int):
+        actions = []
+        pieces = self.get_pieces(turn)
+        actions.extend(self.get_actions_for_pieces(pieces, turn))
+        actions.extend(self.get_poro_actions(turn))
+        return list(set(actions))
+
+    def get_pieces(self, turn: int):
+        return [(i, j, self.state[i][j]) for i in range(self.row_size) for j in range(self.col_size) if (turn == 0 and self.state[i][j] > 0) or (turn == 1 and self.state[i][j] < 0)]
+
+    def get_actions_for_pieces(self, pieces, turn):
+        actions = []
+        for piece in pieces:
+            i, j, type = piece
+            actions_for_piece = [action for action in self.get_action(
+                type, turn) if self.is_valid_action(i, j, action, turn)]
+            actions.extend([((i, j), type, action)
+                            for action in actions_for_piece])
+        return actions
+
+    def is_valid_action(self, i, j, action, turn):
+        x, y = action
+        if not (0 <= i + x <= 2) or not (0 <= j + y <= 3):
+            return False
+        if (turn == 0 and self.state[i + x][j + y] > 0) or (turn == 1 and self.state[i + x][j + y] < 0):
+            return False
+        return True
+
+    def get_poro_actions(self, turn):
+        locations = [(i, j) for i in range(self.row_size) for j in range(self.col_size) if (
+            turn == 0 and j != 3 and self.state[i][j] == 0) or (turn == 1 and j != 0 and self.state[i][j] == 0)]
+        return [(location, poro, None) for location in locations for poro in self.poros[turn]]
+
+    def undo(self):
+        "remove the last placed piece"
+        if self.move_history:  # is not empty
+            # ((1, 1), 4, (0, 1)) 1,1에 있는 type 4의 말을 (0,1) 방향으로 이동
+            last_action = self.move_history[-1]
+            self.state[last_action[0][0]][last_action[0][1]] = 0
+            self.move_history.pop()
+            self.moves -= 1
+        else:
+            raise IndexError("No moves have been played.")
