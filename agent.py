@@ -1,4 +1,6 @@
+
 import random
+from typing import List
 from env import TwelveShogi
 
 
@@ -20,7 +22,7 @@ class Agent():
 
         return locations
 
-    def get_actions(self, piece: (int, int, int)):
+    def get_actions(self, piece: List[int]):
         i, j, type = piece
 
         actions = self.env.get_action(type, self.turn)
