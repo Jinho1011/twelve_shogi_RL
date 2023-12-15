@@ -1,19 +1,53 @@
 from env import TwelveShogi
-from game import ShogiRenderer
 import copy
-from mcts import mcts_go
+# from mcts import mcts_go
 from collections import deque
 import datetime
 import random
 import time
 import numpy as np
-import tensorflow.compat.v1 as tf  # type: ignore
+import tensorflow._api.v2.compat.v1 as tf
 tf.disable_v2_behavior()
+tf.disable_eager_execution()
+
+directions = [
+    [-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 0], [0, 1], [1, -1], [1, 0], [1, 1]
+]
+
+max_a = 12
+max_b = 5
+max_c = 9
+
+
+def num_to_abc(num):
+    a = num // (max_b * max_c) + 1
+    num = num % (max_b * max_c)
+    b = num // max_c + 1
+    c = num % max_c + 1
+    return [a, b, c]
+
+
+def abc_to_num(abc):
+    a, b, c = abc
+    num = ((a - 1) * max_b + (b - 1)) * max_c + (c - 1)
+    return num
+
+# TODO
+# action = ((i, j), type, (x, y))
+# action = [i, j, type, x, y]
 
 
 row_size, col_size = 3, 4
-state_size = 24
-action_size = 156
+state_size = 24  # 3 * 4 + 12
+action_size = 540
+"""
+왕: 58
+장: 34
+상: 24
+자: 9
+후: 46
+171
+"""
 
 load_model = False
 train_mode = True
@@ -23,18 +57,19 @@ mem_maxlen = 50000
 discount_factor = 1.0
 learning_rate = 0.0002
 
-run_episode = 30000
+run_episode = 50000
 test_episode = 100
 
 max_step = 226
 
-start_train_episode = 1000
+start_train_episode = 10000
+start_predict_episode = 11000
 
 target_update_step = 25
 print_interval = 1
 save_interval = 500
 
-epsilon_init = 0.95
+epsilon_init = 1
 epsilon_min = 0.05
 
 date_time = datetime.datetime.now().strftime("%d-%H-%M")
@@ -46,45 +81,41 @@ load_path = "./saved_models/"
 class Model():
     def __init__(self, model_name):
         self.input = tf.placeholder(
-            shape=[None, 1, state_size, state_size], dtype=tf.float32)
+            shape=[None, 1, 5, 5], dtype=tf.float32)  # 6x4인데 정사각형 모양을 맞추기 위해 5x5으로 만듦
 
-        with tf.variable_scope(name_or_scope=model_name):
-            self.conv1 = tf.layers.conv2d(
+        with tf.variable_scope(name_or_scope=model_name, reuse=tf.AUTO_REUSE):
+            self.conv1 = tf.layers.conv2d(  # type: ignore
                 self.input, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
-            self.pool1 = tf.layers.max_pooling2d(
+            self.pool1 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv1, [2, 2], [1, 1], padding='SAME')
-            self.conv2 = tf.layers.conv2d(
+            self.conv2 = tf.layers.conv2d(  # type: ignore
                 self.pool1, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
-            self.pool2 = tf.layers.max_pooling2d(
+            self.pool2 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv2, [2, 2], [1, 1], padding='SAME')
+            self.flat = tf.layers.flatten(self.pool2)  # type: ignore
 
-            self.flat = tf.layers.flatten(self.pool2)
-
-            self.fc1 = tf.layers.dense(self.flat, 128, activation=tf.nn.relu)
-            self.Q_Out = tf.layers.dense(
+            self.fc1 = tf.layers.dense(  # type: ignore
+                self.flat, 128, activation=tf.nn.relu)
+            self.Q_Out = tf.layers.dense(  # type: ignore
                 self.fc1, action_size, activation=tf.nn.softmax)
+            self.predict = tf.argmax(self.Q_Out, 1)
 
-        self.predict = tf.argmax(self.Q_Out, 1)
+            self.target_Q = tf.placeholder(
+                shape=[None, action_size], dtype=tf.float32)
 
-        self.target_Q = tf.placeholder(
-            shape=[None, action_size], dtype=tf.float32)
-
-        self.loss = tf.losses.huber_loss(self.target_Q, self.Q_Out)
-        self.UpdateModel = tf.train.AdamOptimizer(
-            learning_rate).minimize(self.loss)
-        self.trainable_var = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, model_name)
+            self.loss = tf.losses.huber_loss(self.target_Q, self.Q_Out)
+            self.UpdateModel = tf.train.AdamOptimizer(
+                learning_rate).minimize(self.loss)
+            self.trainable_var = tf.get_collection(
+                tf.GraphKeys.TRAINABLE_VARIABLES, model_name)
 
 
 class DQNAgent():
     def __init__(self):
-        self.model1 = Model("Q1")
-        self.target_model1 = Model("target1")
-        self.model2 = Model("Q2")
-        self.target_model2 = Model("target2")
+        self.model = Model("Q")
+        self.target_model = Model("targetQ")
 
-        self.memory1 = deque(maxlen=mem_maxlen)
-        self.memory2 = deque(maxlen=mem_maxlen)
+        self.memory = deque(maxlen=mem_maxlen)
 
         self.sess = tf.Session()
         self.init = tf.global_variables_initializer()
@@ -98,46 +129,50 @@ class DQNAgent():
         if load_model == True:
             self.Saver.restore(self.sess, load_path)
 
-        self.game = TwelveShogi(3, 4)
-        self.renderer = ShogiRenderer(self.game, row_size, col_size)
+        self.game = TwelveShogi(row_size, col_size)
 
     def reset_mcts(self):
-        self.game = TwelveShogi(3, 4)
+        self.game = TwelveShogi(row_size, col_size)
 
-    def print_mcts(self):
-        self.renderer.render()
+    def set_mcts(self, action, turn):
+        self.game.step(action, turn)
 
     def get_action(self, state, turn: int):
         if self.epsilon > np.random.rand():
-            turn = -1 if turn == 0 else 1
-            move = mcts_go(current_game=copy.deepcopy(
-                self.game), turn=turn, stats=True)
-            action = move[0] * state_size[0] + move[1]
+            # 탐험
+            actions = env.get_obvious_moves(turn)
+            action = random.choice(actions)
+            # turn = -1 if turn == 0 else 1
+            # action = mcts_go(current_game=copy.deepcopy(
+            #     self.game), turn=turn, stats=True)
             return action
         else:
-            if turn == 0:
-                predict1 = self.sess.run(self.model1.predict, feed_dict={
-                                         self.model1.input: [[state]]})
-                return np.isscalar(predict1)
-            else:
-                predict2 = self.sess.run(self.model2.predict, feed_dict={
-                                         self.model2.input: [[state]]})
-                return np.isscalar(predict2)
+            while True:
+                print('selecting action ...')
+                predict1 = self.sess.run(self.model.predict, feed_dict={
+                    self.model.input: [[state]]})
+                action = num_to_abc(predict1)
 
-    def append_sample(self, data, turn: int):
-        if turn == 0:
-            self.memory1.append(
-                ([data[0]], data[1], data[2], [data[3]], data[4]))
-        else:
-            self.memory2.append(
-                ([data[0]], data[1], data[2], [data[3]], data[4]))
+                action_0 = (action[0][0] - 1) // col_size
+                action_1 = (action[0][0] - 1) % col_size
+                type = action[1][0]
+                direction = directions[action[2][0] - 1]
+
+                if env.validate_action(((action_0, action_1), type, (direction[0], direction[1])), turn):
+                    break
+
+            return ((action_0, action_1), type, (direction[0], direction[1]))
+
+    def append_sample(self, data):
+        self.memory.append(
+            ([data[0]], data[1], data[2], [data[3]], data[4]))
 
     def save_model(self):
         self.Saver.save(self.sess, save_path + "/model/model")
 
-    def train_model(self, model, target_model, memory, done):
+    def train_model(self, model: Model, target_model: Model, memory, done, episode):
         if done:
-            if self.epsilon > epsilon_min:
+            if self.epsilon > epsilon_min and start_predict_episode < episode:
                 self.epsilon -= (0.5 / (run_episode -
                                  start_train_episode)) * 15
 
@@ -161,15 +196,19 @@ class DQNAgent():
                                    feed_dict={target_model.input: next_states})
 
         for i in range(batch_size):
-            if dones[i]:
-                target[i][actions[i]] = rewards[i]
-            else:
-                target[i][actions[i]] = rewards[i] + \
-                    discount_factor * np.amax(target_val[i])
+            coord = actions[i][0]*col_size + actions[i][1] + 1
+            type = actions[i][2]
+            direction_index = directions.index(
+                [actions[i][3], actions[i][4]]) + 1
+            num = abc_to_num([coord, type, direction_index])
+
+            future_reward = 0 if dones[i] else discount_factor * \
+                np.amax(target_val[i])
+            target[i][num] = rewards[i] + future_reward
 
         _, loss = self.sess.run([model.UpdateModel, model.loss],
                                 feed_dict={model.input: states,
-                                           model.target_Q: target})
+                                           model.target_Q: target})  # type: ignore
 
         return loss
 
@@ -212,47 +251,94 @@ class DQNAgent():
                                                  self.summary_reward2: reward2}), episode)
 
 
-def main():
-    row_size = 3
-    col_size = 4
-
+if __name__ == '__main__':
     env = TwelveShogi(row_size, col_size)
-    renderer = ShogiRenderer(env, row_size, col_size)
+    agent1 = DQNAgent()
+    agent2 = DQNAgent()
 
-    env.reset()
-    done = False
-    turn = 0
-    agent1 = Agent(env, 0)
-    agent2 = Agent(env, 1)
+    rewards = {0: [], 1: []}
+    losses = {0: [], 1: []}
 
-    cum_reward = 0.0
+    end_step = []
 
-    renderer.render()
+    for episode in range(run_episode + test_episode):
+        if episode == run_episode:
+            train_mode = False
 
-    while not done:
-        # 스페이스 바를 누를 때까지 기다림
-        wait_for_space = True
-        while wait_for_space:
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    done = True
-                    wait_for_space = False
-                elif event.type == pg.KEYDOWN:
-                    if event.key == pg.K_SPACE:
-                        wait_for_space = False
+        init_state = env.reset()
+        agent1.reset_mcts()
+        agent2.reset_mcts()
+        done = False
+        turn = 1
 
-        if turn == 0:
-            action = agent1.select_action()
-        else:
-            action = agent2.select_action()
+        episode_rewards = {0: 0.0, 1: 0.0}
 
-        next_state, reward, done = env.step(action, turn)
+        step = 0
+        print(f"episode : {episode}")
+        while not done:
+            turn ^= 1
 
-        renderer.render()
+            agent = agent1 if turn == 0 else agent2
 
-        cum_reward += reward
-        print(f"Step: {next_state}, Reward: {cum_reward}")
+            # [...env.state, poros[0], poros[1]] -> [ [보드판]:12, [포로1, 2 나열]:12 ]
+            poro0 = env.poros[0]  # Take the first 5 columns
+            poro1 = env.poros[1]  # Take the first 5 columns
 
-        turn ^= 1
+            # Concatenate along the first axis
+            state = np.concatenate((env.state, poro0, poro1), axis=None)
+            state = np.append(state, 0)
+            state = np.array(state).reshape(5, 5)
+            action = agent.get_action(state, turn)
+            # [i, j, type, x, y]
+            next_state, reward, done = env.step(action, turn)
+            # agent.set_mcts(action, turn)
 
-        time.sleep(0.1)
+            episode_rewards[turn] += reward
+            done = done
+
+            if train_mode:
+                action = [action[0][0], action[0][1],
+                          action[1], action[2][0], action[2][1]]
+                data = [state, action, reward, next_state, done]
+                agent.append_sample(data)
+            else:
+                agent.epsilon = 0.0
+
+            if episode > start_train_episode and train_mode:
+                # train behavior networks
+                loss1 = agent.train_model(
+                    agent.model, agent.target_model, agent.memory, done, episode)
+                losses[turn].append(loss1)
+
+                # update target networks
+                # 25번째 step마다 target network를 behavior network로 업데이트
+                # 느릴 수도 있으니까 나중에 20번 마다 업데이트하도록 바꿔야함
+                if step % target_update_step == 0:
+                    agent.update_target(
+                        agent.model, agent.target_model)
+            step += 1
+
+        end_step.append(step)
+
+        rewards[0].append(episode_rewards[0])
+        rewards[1].append(episode_rewards[1])
+
+        # if episode % print_interval == 0 and episode != 0:
+        # print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore
+        #         episode, agent.epsilon))
+        # print("reward: {:.2f} / reward1: {:.2f} / loss1: {:.4f} / reward2: {:.2f} / loss2: {:.4f}".format(
+        #       np.mean(rewards[0]) + np.mean(rewards[1]), np.mean(rewards[0]), np.mean(losses[0]), np.mean(rewards[1]), np.mean(losses[1])))
+        # print('------------------------------------------------------------')
+
+        # agent1.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+        #                      np.mean(rewards[1]), np.mean(losses[1]), episode)
+        # agent2.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+        #                      np.mean(rewards[1]), np.mean(losses[1]), episode)
+
+        rewards = {0: [], 1: []}
+        losses = {0: [], 1: []}
+
+        if episode % save_interval == 0 and episode != 0:
+            agent1.save_model()
+            agent2.save_model()
+            print("Save Model {}".format(episode))
