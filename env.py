@@ -63,8 +63,8 @@ class TwelveShogi():
     def __init__(self, row_size, col_size) -> None:
         self.row_size = row_size
         self.col_size = col_size
-        self.poros = {0: np.zeros(6, dtype=np.int64),
-                      1: np.zeros(6, dtype=np.int64)}
+        self.poros = {0: [],
+                      1: []}
         self.state = [
             [2, 0, 0, -1],
             [3, 4, -4, -3],
@@ -81,7 +81,8 @@ class TwelveShogi():
             [3, 4, -4, -3],
             [1, 0, 0, -2]
         ]
-        # TODO: 포로 초기화 하는거 추가
+        self.poros[0] = []
+        self.poros[1] = []
 
     def area_check(self, turn, i, j) -> bool:
         if turn == 0:
@@ -90,6 +91,7 @@ class TwelveShogi():
             return j == 3
 
     # get action of each pieces
+
     def get_action(self, type, turn):
         장_action = [(1, 0), (0, 1), (0, -1), (-1, 0)]
         상_action = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -181,7 +183,8 @@ class TwelveShogi():
                     poro = 4 if turn == 0 else -4
                 else:
                     poro = poro * -1
-                np.append(self.poros[turn], poro)
+
+                self.poros[turn].append(poro)
                 self.move_piece(i, j, x, y)
                 reward += self.reward_dict["catch"]  # 상대 말을 잡으면 추가 보상
             else:
@@ -193,18 +196,25 @@ class TwelveShogi():
             # 포로에서 말을 꺼내서 두는 경우
             if self.state[i][j] == 0:
                 self.state[i][j] = type
-                index = np.where(self.poros[turn] == type)
-                self.poros[turn] = np.delete(self.poros[turn], index)
+                self.poros[turn].remove(type)
+                # self.poros[turn] = np.delete(self.poros[turn], index)
+
                 reward += self.reward_dict["step"]
 
         done_catch = self.finish_catch_check(turn)
         if done_region or done_catch:
             reward += self.reward_dict["victory"]
 
-        # next_state = self.state
+        poro0 = np.array(self.poros[0])
+        poro1 = np.array(self.poros[1])
+
+        poro0_padded = np.pad(
+            poro0, (0, max(0, 6 - len(poro0))), constant_values=0)
+        poro1_padded = np.pad(
+            poro1, (0, max(0, 6 - len(poro1))), constant_values=0)
         next_state = np.concatenate(
-            (self.state, self.poros[0], self.poros[1]), axis=None)
-        next_state = np.append(next_state, 0)
+            (self.state, poro0_padded, poro1_padded), axis=None)
+        next_state = np.append(next_state, turn)
         next_state = np.array(next_state).reshape(5, 5)
         return next_state, reward, done_region or done_catch
 
@@ -271,10 +281,11 @@ class TwelveShogi():
 
     def is_valid_action(self, i, j, action, turn):
         x, y = action
-        if not (0 <= i + x <= 2) or not (0 <= j + y <= 3):
-            return False
-        if (turn == 0 and self.state[i + x][j + y] > 0) or (turn == 1 and self.state[i + x][j + y] < 0):
-            return False
+        if (x, y) != (0, 0):
+            if not (0 <= i + x <= 2) or not (0 <= j + y <= 3):
+                return False
+            if (turn == 0 and self.state[i + x][j + y] > 0) or (turn == 1 and self.state[i + x][j + y] < 0):
+                return False
         return True
 
     def get_poro_actions(self, turn):
@@ -294,26 +305,30 @@ class TwelveShogi():
             raise IndexError("No moves have been played.")
 
     def validate_action(self, action, turn):
-        area_check = self.is_valid_action(
-            action[0][0], action[0][1], action[2], turn)
+        try:
+            area_check = self.is_valid_action(
+                action[0][0], action[0][1], action[2], turn)
 
-        type = action[1]
-        valid_action = self.get_action(type, turn)
+            type = action[1]
+            direction = action[2]
 
-        direction = action[2]
+            valid_action = self.get_action(type, turn)
 
-        if direction == (0, 0):
-            locations = []
-            for i in range(0, self.row_size):
-                for j in range(0, self.col_size):
-                    if turn == 0:
-                        if j != 3 and self.state[i][j] == 0:
-                            locations.append((i, j))
-                    else:
-                        if j != 0 and self.state[i][j] == 0:
-                            locations.append((i, j))
-            direction_check = action[0] in locations
-        else:
-            direction_check = direction in valid_action
-
-        return area_check and direction_check
+            if direction == (0, 0):
+                locations = []
+                for i in range(0, self.row_size):
+                    for j in range(0, self.col_size):
+                        if turn == 0:
+                            if j != 3 and self.state[i][j] == 0:
+                                locations.append((i, j))
+                        else:
+                            if j != 0 and self.state[i][j] == 0:
+                                locations.append((i, j))
+                direction_check = action[0] in locations
+            else:
+                direction_check = (direction[0], direction[1]) in valid_action and self.state[action[0]
+                                                                                              [0]][action[0][1]] == type
+            return area_check and direction_check
+        except:
+            print("exception occured")
+            return False

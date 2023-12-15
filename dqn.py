@@ -20,16 +20,16 @@ max_c = 9
 
 
 def num_to_abc(num):
-    a = num // (max_b * max_c) + 1
+    a = num // (max_b * max_c)
     num = num % (max_b * max_c)
-    b = num // max_c + 1
-    c = num % max_c + 1
+    b = num // max_c
+    c = num % max_c
     return [a, b, c]
 
 
 def abc_to_num(abc):
     a, b, c = abc
-    num = ((a - 1) * max_b + (b - 1)) * max_c + (c - 1)
+    num = (a * max_b + b) * max_c + c
     return num
 
 # TODO
@@ -63,19 +63,20 @@ test_episode = 100
 max_step = 226
 
 start_train_episode = 10000
-start_predict_episode = 11000
+start_predict_episode = 10000
 
 target_update_step = 25
 print_interval = 1
 save_interval = 500
 
-epsilon_init = 1
+epsilon_init = 0.8
 epsilon_min = 0.05
 
 date_time = datetime.datetime.now().strftime("%d-%H-%M")
 
 save_path = "./saved_models/" + date_time + "_DQN_MCTS"
-load_path = "./saved_models/"
+load_path = "./saved_models/" + \
+    "15-18-41_DQN_MCTS/"
 
 
 class Model():
@@ -84,6 +85,8 @@ class Model():
             shape=[None, 1, 5, 5], dtype=tf.float32)  # 6x4인데 정사각형 모양을 맞추기 위해 5x5으로 만듦
 
         with tf.variable_scope(name_or_scope=model_name, reuse=tf.AUTO_REUSE):
+            self.initializer = tf.initializers.zeros()
+
             self.conv1 = tf.layers.conv2d(  # type: ignore
                 self.input, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
             self.pool1 = tf.layers.max_pooling2d(  # type: ignore
@@ -97,7 +100,7 @@ class Model():
             self.fc1 = tf.layers.dense(  # type: ignore
                 self.flat, 128, activation=tf.nn.relu)
             self.Q_Out = tf.layers.dense(  # type: ignore
-                self.fc1, action_size, activation=tf.nn.softmax)
+                self.fc1, action_size, activation=tf.nn.softmax, kernel_initializer=self.initializer)
             self.predict = tf.argmax(self.Q_Out, 1)
 
             self.target_Q = tf.placeholder(
@@ -127,7 +130,8 @@ class DQNAgent():
         self.Summary, self.Merge = self.Make_Summary()
 
         if load_model == True:
-            self.Saver.restore(self.sess, load_path)
+            self.Saver.restore(
+                self.sess, load_path)
 
         self.game = TwelveShogi(row_size, col_size)
 
@@ -138,37 +142,43 @@ class DQNAgent():
         self.game.step(action, turn)
 
     def get_action(self, state, turn: int):
-        if self.epsilon > np.random.rand():
-            # 탐험
-            actions = env.get_obvious_moves(turn)
-            action = random.choice(actions)
-            # turn = -1 if turn == 0 else 1
-            # action = mcts_go(current_game=copy.deepcopy(
-            #     self.game), turn=turn, stats=True)
-            return action
-        else:
-            while True:
-                print('selecting action ...')
+        while True:
+            if self.epsilon > np.random.rand():
+                # 탐험
+                actions = env.get_obvious_moves(turn)
+                action = random.choice(actions)
+                return action
+            else:
                 predict1 = self.sess.run(self.model.predict, feed_dict={
                     self.model.input: [[state]]})
-                action = num_to_abc(predict1)
+                action = num_to_abc(predict1[0])  # type: ignore
 
-                action_0 = (action[0][0] - 1) // col_size
-                action_1 = (action[0][0] - 1) % col_size
-                type = action[1][0]
-                direction = directions[action[2][0] - 1]
+                action_0 = (action[0]) // col_size
+                action_1 = (action[0]) % col_size
+                type = action[1]+1
+                if turn != 0:
+                    type *= -1
+                direction = directions[action[2]]
 
-                if env.validate_action(((action_0, action_1), type, (direction[0], direction[1])), turn):
-                    break
+                action = ((action_0, action_1), type, direction)
 
-            return ((action_0, action_1), type, (direction[0], direction[1]))
+                # if action is not valid, then train model that action you predicted for current state is wrong, so Q value of that action should be 0
+                if not env.validate_action(action, turn):
+                    target = self.sess.run(self.model.Q_Out, feed_dict={
+                        self.model.input: [[state]]})
+                    target[0][predict1[0]] = 0.0
+                    self.sess.run(self.model.UpdateModel, feed_dict={
+                        self.model.input: [[state]], self.model.target_Q: target})
+                    continue
+
+                return ((action_0, action_1), type, (direction[0], direction[1]))
 
     def append_sample(self, data):
         self.memory.append(
             ([data[0]], data[1], data[2], [data[3]], data[4]))
 
     def save_model(self):
-        self.Saver.save(self.sess, save_path + "/model/model")
+        self.Saver.save(self.sess, save_path)
 
     def train_model(self, model: Model, target_model: Model, memory, done, episode):
         if done:
@@ -196,15 +206,15 @@ class DQNAgent():
                                    feed_dict={target_model.input: next_states})
 
         for i in range(batch_size):
-            coord = actions[i][0]*col_size + actions[i][1] + 1
-            type = actions[i][2]
+            coord = actions[i][0]*col_size + actions[i][1]
+            type = abs(actions[i][2])-1
             direction_index = directions.index(
-                [actions[i][3], actions[i][4]]) + 1
+                [actions[i][3], actions[i][4]])
             num = abc_to_num([coord, type, direction_index])
 
             future_reward = 0 if dones[i] else discount_factor * \
-                np.amax(target_val[i])
-            target[i][num] = rewards[i] + future_reward
+                np.amax(target_val[i])  # type: ignore
+            target[i][num] = rewards[i] + future_reward  # type: ignore
 
         _, loss = self.sess.run([model.UpdateModel, model.loss],
                                 feed_dict={model.input: states,
@@ -280,13 +290,18 @@ if __name__ == '__main__':
 
             agent = agent1 if turn == 0 else agent2
 
-            # [...env.state, poros[0], poros[1]] -> [ [보드판]:12, [포로1, 2 나열]:12 ]
-            poro0 = env.poros[0]  # Take the first 5 columns
-            poro1 = env.poros[1]  # Take the first 5 columns
+            poro0 = np.array(env.poros[0])
+            poro1 = np.array(env.poros[1])
+
+            poro0_padded = np.pad(
+                poro0, (0, max(0, 6 - len(poro0))), constant_values=0)
+            poro1_padded = np.pad(
+                poro1, (0, max(0, 6 - len(poro1))), constant_values=0)
 
             # Concatenate along the first axis
-            state = np.concatenate((env.state, poro0, poro1), axis=None)
-            state = np.append(state, 0)
+            state = np.concatenate(
+                (env.state, poro0_padded, poro1_padded), axis=None)
+            state = np.append(state, turn)  # 0 대신에 turn append 하도록 수정
             state = np.array(state).reshape(5, 5)
             action = agent.get_action(state, turn)
             # [i, j, type, x, y]
