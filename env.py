@@ -63,7 +63,8 @@ class TwelveShogi():
     def __init__(self, row_size, col_size) -> None:
         self.row_size = row_size
         self.col_size = col_size
-        self.poros = {0: [], 1: []}
+        self.poros = {0: np.zeros(6, dtype=np.int64),
+                      1: np.zeros(6, dtype=np.int64)}
         self.state = [
             [2, 0, 0, -1],
             [3, 4, -4, -3],
@@ -80,6 +81,7 @@ class TwelveShogi():
             [3, 4, -4, -3],
             [1, 0, 0, -2]
         ]
+        # TODO: 포로 초기화 하는거 추가
 
     def area_check(self, turn, i, j) -> bool:
         if turn == 0:
@@ -87,6 +89,7 @@ class TwelveShogi():
         else:
             return j == 3
 
+    # get action of each pieces
     def get_action(self, type, turn):
         장_action = [(1, 0), (0, 1), (0, -1), (-1, 0)]
         상_action = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -166,7 +169,7 @@ class TwelveShogi():
         done_region = self.finish_region_check(turn)
         reward = 0
 
-        if direction:
+        if direction != (0, 0):
             # 기존 말을 이동시키는 경우
             x, y = direction
             target_x, target_y = i + x, j + y
@@ -178,7 +181,7 @@ class TwelveShogi():
                     poro = 4 if turn == 0 else -4
                 else:
                     poro = poro * -1
-                self.poros[turn].append(poro)
+                np.append(self.poros[turn], poro)
                 self.move_piece(i, j, x, y)
                 reward += self.reward_dict["catch"]  # 상대 말을 잡으면 추가 보상
             else:
@@ -190,19 +193,61 @@ class TwelveShogi():
             # 포로에서 말을 꺼내서 두는 경우
             if self.state[i][j] == 0:
                 self.state[i][j] = type
-                self.poros[turn].remove(type)
+                index = np.where(self.poros[turn] == type)
+                self.poros[turn] = np.delete(self.poros[turn], index)
                 reward += self.reward_dict["step"]
 
         done_catch = self.finish_catch_check(turn)
         if done_region or done_catch:
             reward += self.reward_dict["victory"]
 
-        next_state = self.state
+        # next_state = self.state
+        next_state = np.concatenate(
+            (self.state, self.poros[0], self.poros[1]), axis=None)
+        next_state = np.append(next_state, 0)
+        next_state = np.array(next_state).reshape(5, 5)
         return next_state, reward, done_region or done_catch
 
     def get_obvious_moves(self, turn):
+        # 이번 턴에 취할 수 있는 모든 액션을 가져옴
+        # coord, type, direction
+        # ((1, 1), 4, (0, 1)) 1,1에 있는 type 4의 말을 (0,1) 방향으로 이동: 기존 말을 이동시키는 경우
+        # ((1, 1), 4, None) 1,1에 있는 type 4의 말을 꺼내서 놓기: 포로에서 꺼내서 새로 두는 경우
+
+        # MISSION: 상대 왕의 위치를 얻고, 그 방향으로 이동하는 액션만 남기기
+        # ex. 상대 왕이 (1, 3)에 있고
+
         actions = self.get_all_possible_actions(turn)
-        return actions
+        # 상대 왕의 위치 찾기
+        opponent_king = -3 if turn == 0 else 3
+        king_position = None
+        for i in range(self.row_size):
+            for j in range(self.col_size):
+                if self.state[i][j] == opponent_king:
+                    king_position = (i, j)
+                    break
+            if king_position:
+                break
+
+        if king_position is None:
+            return actions
+
+        # 상대 왕의 위치로의 방향으로 이동할 수 있는 액션만 필터링
+        filtered_actions = []
+        for coord, type, action in actions:
+            if action is None:
+                continue
+            x, y = action
+
+            direction_to_king = (
+                king_position[0] - coord[0], king_position[1] - coord[1])
+
+            # 상대 왕을 향하는 방향으로 이동하는 액션만 필터링
+            if (direction_to_king[0] >= 0 and x >= 0) or (direction_to_king[0] < 0 and x < 0):
+                if (direction_to_king[1] >= 0 and y >= 0) or (direction_to_king[1] < 0 and y < 0):
+                    filtered_actions.append((coord, type, action))
+
+        return filtered_actions
 
     def get_all_possible_actions(self, turn: int):
         actions = []
@@ -235,7 +280,7 @@ class TwelveShogi():
     def get_poro_actions(self, turn):
         locations = [(i, j) for i in range(self.row_size) for j in range(self.col_size) if (
             turn == 0 and j != 3 and self.state[i][j] == 0) or (turn == 1 and j != 0 and self.state[i][j] == 0)]
-        return [(location, poro, None) for location in locations for poro in self.poros[turn]]
+        return [(location, poro, None) for location in locations for poro in self.poros[turn] if poro != 0]
 
     def undo(self):
         "remove the last placed piece"
@@ -247,3 +292,28 @@ class TwelveShogi():
             self.moves -= 1
         else:
             raise IndexError("No moves have been played.")
+
+    def validate_action(self, action, turn):
+        area_check = self.is_valid_action(
+            action[0][0], action[0][1], action[2], turn)
+
+        type = action[1]
+        valid_action = self.get_action(type, turn)
+
+        direction = action[2]
+
+        if direction == (0, 0):
+            locations = []
+            for i in range(0, self.row_size):
+                for j in range(0, self.col_size):
+                    if turn == 0:
+                        if j != 3 and self.state[i][j] == 0:
+                            locations.append((i, j))
+                    else:
+                        if j != 0 and self.state[i][j] == 0:
+                            locations.append((i, j))
+            direction_check = action[0] in locations
+        else:
+            direction_check = direction in valid_action
+
+        return area_check and direction_check
