@@ -171,6 +171,19 @@ class DQNAgent():
                         self.model.input: [[state]], self.model.target_Q: target})
                     continue
 
+                state = np.array(state)
+
+                # Flatten the array and take the first 12 elements
+                state_flattened = state.flatten()[:12]
+
+                # Reshape the array to 3x4
+                state_reshaped = state_flattened.reshape((3, 4))
+
+                # Print the reshaped array
+                print(state_reshaped)
+                print(((action_0, action_1), type,
+                      (direction[0], direction[1])))
+
                 return ((action_0, action_1), type, (direction[0], direction[1]))
 
     def append_sample(self, data):
@@ -354,6 +367,6 @@ if __name__ == '__main__':
         losses = {0: [], 1: []}
 
         if episode % save_interval == 0 and episode != 0:
-            agent1.save_model()
-            agent2.save_model()
+            agent1.save_model()  # 선공 모델
+            agent2.save_model()  # 후공 모델
             print("Save Model {}".format(episode))
