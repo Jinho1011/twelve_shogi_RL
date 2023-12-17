@@ -153,6 +153,7 @@ class DQNAgent():
                     self.model.input: [[state]]})
                 action = num_to_abc(predict1[0])  # type: ignore
 
+
                 action_0 = (action[0]) // col_size
                 action_1 = (action[0]) % col_size
                 type = action[1]+1
