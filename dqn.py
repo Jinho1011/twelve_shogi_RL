@@ -1,12 +1,15 @@
-from env import TwelveShogi
-import copy
-# from mcts import mcts_go
-from collections import deque
-import datetime
-import random
-import time
 import numpy as np
+import time
+import random
+import datetime
+from collections import deque
+import copy
+from env import TwelveShogi
+import os
 import tensorflow._api.v2.compat.v1 as tf
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+# from mcts import mcts_go
+
 tf.disable_v2_behavior()
 tf.disable_eager_execution()
 
@@ -18,38 +21,11 @@ max_a = 12
 max_b = 5
 max_c = 9
 
-
-def num_to_abc(num):
-    a = num // (max_b * max_c)
-    num = num % (max_b * max_c)
-    b = num // max_c
-    c = num % max_c
-    return [a, b, c]
-
-
-def abc_to_num(abc):
-    a, b, c = abc
-    num = (a * max_b + b) * max_c + c
-    return num
-
-# TODO
-# action = ((i, j), type, (x, y))
-# action = [i, j, type, x, y]
-
-
 row_size, col_size = 3, 4
 state_size = 24  # 3 * 4 + 12
 action_size = 540
-"""
-왕: 58
-장: 34
-상: 24
-자: 9
-후: 46
-171
-"""
 
-load_model = False
+# load_model = False
 train_mode = True
 
 batch_size = 64
@@ -74,9 +50,22 @@ epsilon_min = 0.05
 
 date_time = datetime.datetime.now().strftime("%d-%H-%M")
 
-save_path = "./saved_models/" + date_time + "_DQN_MCTS"
-load_path = "./saved_models/" + \
-    "15-18-41_DQN_MCTS/"
+agent_0_save_path = "./saved_models0/"
+agent_1_save_path = "./saved_models1/"
+
+
+def num_to_abc(num):
+    a = num // (max_b * max_c)
+    num = num % (max_b * max_c)
+    b = num // max_c
+    c = num % max_c
+    return [a, b, c]
+
+
+def abc_to_num(abc):
+    a, b, c = abc
+    num = (a * max_b + b) * max_c + c
+    return num
 
 
 class Model():
@@ -88,11 +77,11 @@ class Model():
             self.initializer = tf.initializers.zeros()
 
             self.conv1 = tf.layers.conv2d(  # type: ignore
-                self.input, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
+                self.input, 16, [3, 3], padding='SAME', activation=tf.nn.relu)
             self.pool1 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv1, [2, 2], [1, 1], padding='SAME')
             self.conv2 = tf.layers.conv2d(  # type: ignore
-                self.pool1, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
+                self.pool1, 16, [3, 3], padding='SAME', activation=tf.nn.relu)
             self.pool2 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv2, [2, 2], [1, 1], padding='SAME')
             self.flat = tf.layers.flatten(self.pool2)  # type: ignore
@@ -114,24 +103,27 @@ class Model():
 
 
 class DQNAgent():
-    def __init__(self):
+    def __init__(self, turn, epsilon=0.95, load_model=False):
+        self.turn = turn
         self.model = Model("Q")
         self.target_model = Model("targetQ")
 
         self.memory = deque(maxlen=mem_maxlen)
 
-        self.sess = tf.Session()
+        self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
         self.init = tf.global_variables_initializer()
         self.sess.run(self.init)
 
-        self.epsilon = epsilon_init
+        self.epsilon = epsilon
 
         self.Saver = tf.train.Saver()
         self.Summary, self.Merge = self.Make_Summary()
 
         if load_model == True:
+            load_path = agent_0_save_path if self.turn == 0 else agent_1_save_path
+            # self.Saver.restore(self.sess, load_path)
             self.Saver.restore(
-                self.sess, load_path)
+                self.sess, f"./saved_models{turn}/")
 
         self.game = TwelveShogi(row_size, col_size)
 
@@ -141,18 +133,17 @@ class DQNAgent():
     def set_mcts(self, action, turn):
         self.game.step(action, turn)
 
-    def get_action(self, state, turn: int):
+    def get_action(self, state, turn: int, env):
         while True:
             if self.epsilon > np.random.rand():
                 # 탐험
-                actions = env.get_obvious_moves(turn)
+                actions = env.get_all_possible_actions(turn)
                 action = random.choice(actions)
                 return action
             else:
                 predict1 = self.sess.run(self.model.predict, feed_dict={
                     self.model.input: [[state]]})
                 action = num_to_abc(predict1[0])  # type: ignore
-
 
                 action_0 = (action[0]) // col_size
                 action_1 = (action[0]) % col_size
@@ -165,11 +156,11 @@ class DQNAgent():
 
                 # if action is not valid, then train model that action you predicted for current state is wrong, so Q value of that action should be 0
                 if not env.validate_action(action, turn):
-                    target = self.sess.run(self.model.Q_Out, feed_dict={
-                        self.model.input: [[state]]})
-                    target[0][predict1[0]] = 0.0
-                    self.sess.run(self.model.UpdateModel, feed_dict={
-                        self.model.input: [[state]], self.model.target_Q: target})
+                    # target = self.sess.run(self.model.Q_Out, feed_dict={
+                    #     self.model.input: [[state]]})
+                    # target[0][predict1[0]] = 0.0
+                    # self.sess.run(self.model.UpdateModel, feed_dict={
+                    #     self.model.input: [[state]], self.model.target_Q: target})
                     continue
 
                 state = np.array(state)
@@ -192,6 +183,7 @@ class DQNAgent():
             ([data[0]], data[1], data[2], [data[3]], data[4]))
 
     def save_model(self):
+        save_path = agent_0_save_path if self.turn == 0 else agent_1_save_path
         self.Saver.save(self.sess, save_path)
 
     def train_model(self, model: Model, target_model: Model, memory, done, episode):
@@ -258,6 +250,7 @@ class DQNAgent():
         tf.summary.scalar("loss2", self.summary_loss2)
         tf.summary.scalar("reward2", self.summary_reward2)
 
+        save_path = agent_0_save_path if self.turn == 0 else agent_1_save_path
         Summary = tf.summary.FileWriter(
             logdir=save_path, graph=self.sess.graph)
         Merge = tf.summary.merge_all()
@@ -277,8 +270,8 @@ class DQNAgent():
 
 if __name__ == '__main__':
     env = TwelveShogi(row_size, col_size)
-    agent1 = DQNAgent()
-    agent2 = DQNAgent()
+    agent1 = DQNAgent(0)
+    agent2 = DQNAgent(1)
 
     rewards = {0: [], 1: []}
     losses = {0: [], 1: []}
@@ -303,6 +296,7 @@ if __name__ == '__main__':
             turn ^= 1
 
             agent = agent1 if turn == 0 else agent2
+            opponent_agent = agent2 if turn == 0 else agent1
 
             poro0 = np.array(env.poros[0])
             poro1 = np.array(env.poros[1])
@@ -315,9 +309,9 @@ if __name__ == '__main__':
             # Concatenate along the first axis
             state = np.concatenate(
                 (env.state, poro0_padded, poro1_padded), axis=None)
-            state = np.append(state, turn)  # 0 대신에 turn append 하도록 수정
+            state = np.append(state, 0)  # 0 대신에 turn append 하도록 수정
             state = np.array(state).reshape(5, 5)
-            action = agent.get_action(state, turn)
+            action = agent.get_action(state, turn, env)
             # [i, j, type, x, y]
             next_state, reward, done = env.step(action, turn)
             # agent.set_mcts(action, turn)
@@ -351,6 +345,11 @@ if __name__ == '__main__':
 
         rewards[0].append(episode_rewards[0])
         rewards[1].append(episode_rewards[1])
+
+        # 각 에피소드 별 step 수
+        # 선공 후공 승률
+        # 선공 후공 평균 보상
+        # 선공 후공 로스 평균
 
         # if episode % print_interval == 0 and episode != 0:
         # print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore

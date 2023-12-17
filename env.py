@@ -191,7 +191,10 @@ class TwelveShogi():
             else:
                 # 빈 칸으로 이동
                 self.move_piece(i, j, x, y)
-                reward += self.reward_dict["step"]
+                if abs(type) == 3:
+                    reward -= self.reward_dict["step"] / 10
+                else:
+                    reward += self.reward_dict["step"]
             self.turn_hu(type, target_x, target_y)
         else:
             # 포로에서 말을 꺼내서 두는 경우
@@ -217,8 +220,12 @@ class TwelveShogi():
             (self.state, poro0_padded, poro1_padded), axis=None)
         next_state = np.append(next_state, turn)
         next_state = np.array(next_state).reshape(5, 5)
+
+        if self.is_check_mate(self.state, turn):
+            reward -= 10
+
         return next_state, reward, done_region or done_catch
-    
+
     def is_check_mate(self, state, turn):
         # 내 왕이 잡히는 경우 체크메이트
         # 내 왕이 상대편 말들에서 나올 수 있는 위치들에 있으면 체크메이트
@@ -226,7 +233,7 @@ class TwelveShogi():
         opponents = []
         king_position = None
 
-        if turn == 0:   
+        if turn == 0:
             for i in range(self.row_size):
                 for j in range(self.col_size):
                     if state[i][j] == 3:
@@ -257,7 +264,8 @@ class TwelveShogi():
             opponent_actions = self.get_action(opponent_type, turn)
             for opponent_action in opponent_actions:
                 opponent_x, opponent_y = opponent_action
-                opponent_target_x, opponent_target_y = opponent[0] + opponent_x, opponent[1] + opponent_y
+                opponent_target_x, opponent_target_y = opponent[0] + \
+                    opponent_x, opponent[1] + opponent_y
                 positions.append((opponent_target_x, opponent_target_y))
 
         return king_position in positions
@@ -289,7 +297,7 @@ class TwelveShogi():
         # 상대 왕의 위치로의 방향으로 이동할 수 있는 액션만 필터링
         filtered_actions = []
         for coord, type, action in actions:
-            if action == (0,0):
+            if action == (0, 0):
                 continue
             x, y = action
 
@@ -300,10 +308,9 @@ class TwelveShogi():
             if (direction_to_king[0] >= 0 and x >= 0) or (direction_to_king[0] < 0 and x < 0):
                 if (direction_to_king[1] >= 0 and y >= 0) or (direction_to_king[1] < 0 and y < 0):
                     filtered_actions.append((coord, type, action))
-        
-        temp = copy.deepcopy(self.state)
-        
+
         for coord, type, action in filtered_actions:
+            temp = copy.deepcopy(self.state)
             i, j = coord
             x, y = action
             target_x, target_y = i + x, j + y
@@ -311,10 +318,10 @@ class TwelveShogi():
             temp[i][j] = 0
             if self.is_check_mate(temp, turn):
                 filtered_actions.remove((coord, type, action))
-        
+
         if len(filtered_actions) == 0:
             return actions
-        else:   
+        else:
             return filtered_actions
 
     def get_all_possible_actions(self, turn: int):
@@ -349,7 +356,7 @@ class TwelveShogi():
     def get_poro_actions(self, turn):
         locations = [(i, j) for i in range(self.row_size) for j in range(self.col_size) if (
             turn == 0 and j != 3 and self.state[i][j] == 0) or (turn == 1 and j != 0 and self.state[i][j] == 0)]
-        return [(location, poro, (0,0)) for location in locations for poro in self.poros[turn] if poro != 0]
+        return [(location, poro, (0, 0)) for location in locations for poro in self.poros[turn] if poro != 0]
 
     def undo(self):
         "remove the last placed piece"
