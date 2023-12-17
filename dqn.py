@@ -43,7 +43,7 @@ start_predict_episode = 10000
 
 target_update_step = 25
 print_interval = 1
-save_interval = 500
+save_interval = 100
 
 epsilon_init = 0.8
 epsilon_min = 0.05
@@ -77,14 +77,18 @@ class Model():
             self.initializer = tf.initializers.zeros()
 
             self.conv1 = tf.layers.conv2d(  # type: ignore
-                self.input, 16, [3, 3], padding='SAME', activation=tf.nn.relu)
+                self.input, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
             self.pool1 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv1, [2, 2], [1, 1], padding='SAME')
             self.conv2 = tf.layers.conv2d(  # type: ignore
-                self.pool1, 16, [3, 3], padding='SAME', activation=tf.nn.relu)
+                self.pool1, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
             self.pool2 = tf.layers.max_pooling2d(  # type: ignore
                 self.conv2, [2, 2], [1, 1], padding='SAME')
-            self.flat = tf.layers.flatten(self.pool2)  # type: ignore
+            self.conv3 = tf.layers.conv2d(  # type: ignore
+                self.pool2, 32, [3, 3], padding='SAME', activation=tf.nn.relu)
+            self.pool3 = tf.layers.max_pooling2d(  # type: ignore
+                self.conv3, [2, 2], [1, 1], padding='SAME')
+            self.flat = tf.layers.flatten(self.pool3)  # type: ignore
 
             self.fc1 = tf.layers.dense(  # type: ignore
                 self.flat, 128, activation=tf.nn.relu)
@@ -291,7 +295,6 @@ if __name__ == '__main__':
         episode_rewards = {0: 0.0, 1: 0.0}
 
         step = 0
-        print(f"episode : {episode}")
         while not done:
             turn ^= 1
 
@@ -351,17 +354,17 @@ if __name__ == '__main__':
         # 선공 후공 평균 보상
         # 선공 후공 로스 평균
 
-        # if episode % print_interval == 0 and episode != 0:
-        # print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore
-        #         episode, agent.epsilon))
-        # print("reward: {:.2f} / reward1: {:.2f} / loss1: {:.4f} / reward2: {:.2f} / loss2: {:.4f}".format(
-        #       np.mean(rewards[0]) + np.mean(rewards[1]), np.mean(rewards[0]), np.mean(losses[0]), np.mean(rewards[1]), np.mean(losses[1])))
-        # print('------------------------------------------------------------')
+        if episode % print_interval == 0 and episode != 0:
+            print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore
+                                                                    episode, agent.epsilon))
+            print("reward: {:.2f} / reward1: {:.2f} / loss1: {:.4f} / reward2: {:.2f} / loss2: {:.4f}".format(
+                np.mean(rewards[0]) + np.mean(rewards[1]), np.mean(rewards[0]), np.mean(losses[0]), np.mean(rewards[1]), np.mean(losses[1])))
+            print('------------------------------------------------------------')
 
-        # agent1.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
-        #                      np.mean(rewards[1]), np.mean(losses[1]), episode)
-        # agent2.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
-        #                      np.mean(rewards[1]), np.mean(losses[1]), episode)
+            agent1.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+                                 np.mean(rewards[1]), np.mean(losses[1]), episode)
+            agent2.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+                                 np.mean(rewards[1]), np.mean(losses[1]), episode)
 
         rewards = {0: [], 1: []}
         losses = {0: [], 1: []}

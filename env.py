@@ -72,7 +72,7 @@ class TwelveShogi():
             [1, 0, 0, -2]
         ]
         self.reward_dict = {"victory": 10.0, "defeat": -
-                            10.0, "step": 0.0001, "catch": 0.01}
+                            100.0, "step": 0.0000, "catch": 0.0001}
         self.move_history = []
         self.moves = 0
 
@@ -222,7 +222,7 @@ class TwelveShogi():
         next_state = np.array(next_state).reshape(5, 5)
 
         if self.is_check_mate(self.state, turn):
-            reward -= 10
+            reward -= 20
 
         return next_state, reward, done_region or done_catch
 
