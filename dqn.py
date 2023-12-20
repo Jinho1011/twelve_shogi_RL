@@ -295,6 +295,7 @@ if __name__ == '__main__':
         episode_rewards = {0: 0.0, 1: 0.0}
 
         step = 0
+        print(f"episode : {episode}")
         while not done:
             turn ^= 1
 
@@ -354,17 +355,17 @@ if __name__ == '__main__':
         # 선공 후공 평균 보상
         # 선공 후공 로스 평균
 
-        if episode % print_interval == 0 and episode != 0:
-            print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore
-                                                                    episode, agent.epsilon))
-            print("reward: {:.2f} / reward1: {:.2f} / loss1: {:.4f} / reward2: {:.2f} / loss2: {:.4f}".format(
-                np.mean(rewards[0]) + np.mean(rewards[1]), np.mean(rewards[0]), np.mean(losses[0]), np.mean(rewards[1]), np.mean(losses[1])))
-            print('------------------------------------------------------------')
+        # if episode % print_interval == 0 and episode != 0:
+        #     print("step: {} / episode: {} / epsilon: {:.3f}".format(step,  # type: ignore
+        #             episode, agent.epsilon))
+        #     print("reward: {:.2f} / reward1: {:.2f} / loss1: {:.4f} / reward2: {:.2f} / loss2: {:.4f}".format(
+        #         np.mean(rewards[0]) + np.mean(rewards[1]), np.mean(rewards[0]), np.mean(losses[0]), np.mean(rewards[1]), np.mean(losses[1])))
+        #     print('------------------------------------------------------------')
 
-            agent1.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
-                                 np.mean(rewards[1]), np.mean(losses[1]), episode)
-            agent2.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
-                                 np.mean(rewards[1]), np.mean(losses[1]), episode)
+        #     agent1.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+        #                         np.mean(rewards[1]), np.mean(losses[1]), episode)
+        #     agent2.Write_Summray(np.mean(end_step), np.mean(rewards[0]) + np.mean(rewards[1]), max(max(rewards[0]), max(rewards[1])), np.mean(rewards[0]), np.mean(losses[0]),  # type: ignore
+        #                         np.mean(rewards[1]), np.mean(losses[1]), episode)
 
         rewards = {0: [], 1: []}
         losses = {0: [], 1: []}
